@@ -1,0 +1,37 @@
+# Credentials & config with sensitive data
+config.json
+
+# Environment variable files
+.env
+.env.*
+*.env
+
+# Logs
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Build output
+dist/
+build/
+*.spec
+
+# Output files (generated reports)
+output/
+
+# Input archive (large generated data, not source)
+input/archive/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weekly Report Dashboard</title>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <!-- Feather icons -->
+  <script src="https://cdn.jsdelivr.net/npm/feather-icons@4.29.0/dist/feather.min.js"></script>
+
+  <link rel="stylesheet" href="/static/css/dashboard.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════ SIDEBAR ═══════════════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">
+      <i data-feather="activity"></i>
+    </div>
+    <div class="brand-text">
+      <span class="brand-name">WeeklyReport</span>
+      <span class="brand-sub">DGM Dashboard</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-section="overview">
+      <i data-feather="grid"></i>
+      <span>Overview</span>
+    </a>
+    <a href="#" class="nav-item" data-section="analytics">
+      <i data-feather="bar-chart-2"></i>
+      <span>Analytics</span>
+    </a>
+    <a href="#" class="nav-item" data-section="pipeline">
+      <i data-feather="zap"></i>
+      <span>Pipeline</span>
+      <span class="nav-badge" id="pipelineBadge" style="display:none">●</span>
+    </a>
+    <a href="#" class="nav-item" data-section="files">
+      <i data-feather="folder"></i>
+      <span>Files</span>
+    </a>
+    <a href="#" class="nav-item" data-section="settings">
+      <i data-feather="settings"></i>
+      <span>Settings</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="pipeline-mini-status" id="miniStatus">
+      <span class="status-dot idle" id="miniDot"></span>
+      <span id="miniStatusText">Idle</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ══════════════════════════ MAIN AREA ══════════════════════════ -->
+<div class="main-wrap">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+      <i data-feather="menu"></i>
+    </button>
+    <div class="topbar-title" id="topbarTitle">Overview</div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost btn-icon" id="refreshBtn" title="Refresh data">
+        <i data-feather="refresh-cw"></i>
+      </button>
+      <button class="btn btn-primary" id="topbarRunBtn">
+        <i data-feather="play"></i>
+        <span>Run Pipeline</span>
+      </button>
+      <a class="btn btn-ghost" id="downloadBtn" href="/api/output/download" title="Download report">
+        <i data-feather="download"></i>
+        <span>Download</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- ══════ SECTION: OVERVIEW ══════ -->
+  <section class="page-section active" id="section-overview">
+    <div class="section-header">
+      <h1>Executive Overview</h1>
+      <p>Consolidated weekly workforce report · <span id="lastUpdated">—</span></p>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card" id="kpi-rows">
+        <div class="kpi-icon" style="background:var(--accent-alpha)"><i data-feather="layers"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Total Records</div>
+          <div class="kpi-value" id="kpiRows">—</div>
+        </div>
+      </div>
+      <div class="kpi-card" id="kpi-hours">
+        <div class="kpi-icon" style="background:rgba(16,185,129,.12)"><i data-feather="clock" style="color:var(--success)"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Total Hours Logged</div>
+          <div class="kpi-value" id="kpiHours">—</div>
+        </div>
+      </div>
+      <div class="kpi-card" id="kpi-depts">
+        <div class="kpi-icon" style="background:rgba(245,158,11,.12)"><i data-feather="briefcase" style="color:var(--warning)"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Departments</div>
+          <div class="kpi-value" id="kpiDepts">—</div>
+        </div>
+      </div>
+      <div class="kpi-card" id="kpi-staff">
+        <div class="kpi-icon" style="background:rgba(139,92,246,.12)"><i data-feather="users" style="color:#8B5CF6"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Staff Reporting</div>
+          <div class="kpi-value" id="kpiStaff">—</div>
+        </div>
+      </div>
+      <div class="kpi-card" id="kpi-avg">
+        <div class="kpi-icon" style="background:rgba(236,72,153,.12)"><i data-feather="trending-up" style="color:#EC4899"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Avg Hrs / Person</div>
+          <div class="kpi-value" id="kpiAvg">—</div>
+        </div>
+      </div>
+      <div class="kpi-card" id="kpi-completion">
+        <div class="kpi-icon" style="background:rgba(6,182,212,.12)"><i data-feather="check-circle" style="color:#06B6D4"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Completion Rate</div>
+          <div class="kpi-value" id="kpiCompletion">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="charts-row">
+      <div class="card chart-card chart-card--wide">
+        <div class="card-header">
+          <h3>Hours by Department</h3>
+          <span class="card-badge">Bar</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="deptChart"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-header">
+          <h3>Work Status</h3>
+          <span class="card-badge">Donut</span>
+        </div>
+        <div class="chart-wrap chart-wrap--donut">
+          <canvas id="statusChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent activity table -->
+    <div class="card table-card">
+      <div class="card-header">
+        <h3>Recent Activity</h3>
+        <span class="card-badge" id="recentBadge">—</span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="recentTable">
+          <thead>
+            <tr id="recentTableHead"></tr>
+          </thead>
+          <tbody id="recentTableBody">
+            <tr><td colspan="10" class="empty-state">No data loaded yet. Run the pipeline to populate the dashboard.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SECTION: ANALYTICS ══════ -->
+  <section class="page-section" id="section-analytics">
+    <div class="section-header">
+      <h1>Analytics</h1>
+      <p>Deep-dive charts across projects, timelines, and departments</p>
+    </div>
+
+    <div class="charts-row">
+      <div class="card chart-card chart-card--wide">
+        <div class="card-header">
+          <h3>Top 10 Projects by Hours</h3>
+          <span class="card-badge">Horizontal Bar</span>
+        </div>
+        <div class="chart-wrap chart-wrap--tall">
+          <canvas id="projectChart"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-header">
+          <h3>Hours Trend</h3>
+          <span class="card-badge">Line</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="trendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Department breakdown table -->
+    <div class="card table-card">
+      <div class="card-header">
+        <h3>Department Breakdown</h3>
+        <span class="card-badge" id="deptTableBadge">—</span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="deptTable">
+          <thead>
+            <tr>
+              <th>Department</th>
+              <th>Total Hours</th>
+              <th>Staff</th>
+              <th>Records</th>
+              <th>Avg Hrs/Record</th>
+            </tr>
+          </thead>
+          <tbody id="deptTableBody">
+            <tr><td colspan="5" class="empty-state">No data yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SECTION: PIPELINE ══════ -->
+  <section class="page-section" id="section-pipeline">
+    <div class="section-header">
+      <h1>Pipeline Control</h1>
+      <p>Merge all department files into the master report</p>
+    </div>
+
+    <div class="pipeline-layout">
+      <!-- Control card -->
+      <div class="card pipeline-card">
+        <div class="card-header">
+          <h3>Run Merger Pipeline</h3>
+        </div>
+        <div class="pipeline-status-row" id="pipelineStatusRow">
+          <div class="big-status-dot idle" id="bigStatusDot"></div>
+          <div class="big-status-info">
+            <div class="big-status-label" id="bigStatusLabel">Ready</div>
+            <div class="big-status-sub" id="bigStatusSub">Click "Run Pipeline" to start</div>
+          </div>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap" style="display:none">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <span class="progress-label" id="progressLabel">Processing…</span>
+        </div>
+
+        <div class="pipeline-actions">
+          <button class="btn btn-primary btn-lg" id="runPipelineBtn">
+            <i data-feather="play"></i>
+            Run Pipeline
+          </button>
+        </div>
+
+        <div class="pipeline-meta" id="pipelineMeta" style="display:none">
+          <div class="meta-item">
+            <span class="meta-key">Duration</span>
+            <span class="meta-val" id="metaDuration">—</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-key">Status</span>
+            <span class="meta-val" id="metaStatus">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live log console -->
+      <div class="card log-card">
+        <div class="card-header">
+          <h3>Execution Log</h3>
+          <div class="log-actions">
+            <span class="live-indicator" id="liveIndicator">
+              <span class="live-dot"></span> LIVE
+            </span>
+            <button class="btn btn-ghost btn-sm" id="clearLogBtn">Clear</button>
+          </div>
+        </div>
+        <div class="log-console" id="logConsole"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SECTION: FILES ══════ -->
+  <section class="page-section" id="section-files">
+    <div class="section-header">
+      <h1>File Manager</h1>
+      <p>Upload and manage department .xlsx files for the pipeline</p>
+    </div>
+
+    <!-- Upload drop zone -->
+    <div class="card upload-card" id="uploadCard">
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon"><i data-feather="upload-cloud"></i></div>
+        <div class="drop-text">
+          <strong>Drag &amp; drop .xlsx files here</strong>
+          <span>or click to browse</span>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx" multiple hidden />
+      </div>
+      <div id="uploadFeedback" class="upload-feedback" style="display:none"></div>
+    </div>
+
+    <!-- File list -->
+    <div class="card table-card">
+      <div class="card-header">
+        <h3>Input Files</h3>
+        <span class="card-badge" id="fileCountBadge">0 files</span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="filesTable">
+          <thead>
+            <tr>
+              <th>File Name</th>
+              <th>Size</th>
+              <th>Modified</th>
+              <th style="text-align:center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="filesTableBody">
+            <tr><td colspan="4" class="empty-state">No files in input folder.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SECTION: SETTINGS ══════ -->
+  <section class="page-section" id="section-settings">
+    <div class="section-header">
+      <h1>Settings</h1>
+      <p>Configure paths and pipeline behaviour</p>
+    </div>
+
+    <div class="settings-layout">
+      <div class="card settings-card">
+        <div class="card-header"><h3>Path Configuration</h3></div>
+        <form id="settingsForm" class="settings-form">
+          <div class="form-group">
+            <label for="inputDirInput">Input Folder</label>
+            <div class="input-row">
+              <input type="text" id="inputDirInput" class="form-input" placeholder="C:\path\to\input" />
+            </div>
+            <span class="form-hint">Folder containing all departmental .xlsx files</span>
+          </div>
+          <div class="form-group">
+            <label for="outputFileInput">Output File Path</label>
+            <div class="input-row">
+              <input type="text" id="outputFileInput" class="form-input" placeholder="C:\path\to\output\master_report.xlsx" />
+            </div>
+            <span class="form-hint">Destination path for the consolidated master workbook</span>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">
+              <i data-feather="save"></i> Save Settings
+            </button>
+            <span class="save-feedback" id="saveFeedback" style="display:none"></span>
+          </div>
+        </form>
+      </div>
+
+      <div class="card settings-card">
+        <div class="card-header"><h3>About</h3></div>
+        <div class="about-body">
+          <div class="about-row"><span class="about-key">App</span><span class="about-val">Weekly Report Automator</span></div>
+          <div class="about-row"><span class="about-key">Dashboard</span><span class="about-val">Deputy General Manager View</span></div>
+          <div class="about-row"><span class="about-key">Engine</span><span class="about-val">Flask + Chart.js</span></div>
+          <div class="about-row"><span class="about-key">Data</span><span class="about-val">pandas · openpyxl</span></div>
+          <div class="about-divider"></div>
+          <p class="about-desc">
+            Merges every departmental .xlsx file in the input folder into a single
+            polished master workbook — a Details sheet with all rows, and a Summary
+            sheet with per-department rollups and KPI charts.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /.main-wrap -->
+
+<!-- ══════════════ TOAST CONTAINER ══════════════ -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>
