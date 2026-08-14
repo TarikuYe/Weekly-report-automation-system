@@ -103,8 +103,16 @@ msoffcrypto-tool >= 5.0.0
    ```
 
 3. **Configure the application**
+   ```bash
+   # Copy the example config
+   copy config.example.json config.json
+   
+   # Edit config.json with your settings
+   # IMPORTANT: Never commit config.json - it contains credentials!
+   ```
    - Edit `config.json` to set input/output paths and department structure
    - Configure SMTP settings for email automation (optional)
+   - **⚠️ SECURITY**: `config.json` is gitignored and should NEVER be committed
 
 4. **Launch the web dashboard**
    ```bash
@@ -184,6 +192,8 @@ pythonw gui.pyw
 ## ⚙️ Configuration
 
 ### config.json Structure
+
+⚠️ **IMPORTANT**: Copy `config.example.json` to `config.json` before editing. Never commit `config.json`!
 
 ```json
 {
@@ -371,6 +381,27 @@ Enable verbose logging by setting `logging.basicConfig(level=logging.DEBUG)` in 
 ---
 
 ## 🔐 Security Considerations
+
+### ⚠️ CRITICAL: Never Commit Credentials
+
+**The `config.json` file is gitignored for security reasons.** It contains:
+- SMTP passwords
+- Email addresses  
+- Department passwords
+
+**Setup checklist:**
+1. ✅ Copy `config.example.json` to `config.json`
+2. ✅ Edit `config.json` with your credentials
+3. ✅ Verify `config.json` is in `.gitignore`
+4. ❌ **NEVER** run `git add config.json`
+5. ❌ **NEVER** commit or push `config.json`
+
+If you accidentally commit credentials:
+1. **Immediately revoke** the exposed credential (e.g., delete Gmail app password)
+2. Generate a new credential
+3. Update `config.json` locally
+4. Use `git filter-branch` or BFG to remove from history
+5. Force push: `git push --force origin main`
 
 ### Email Credentials
 - Stored in `config.json` on local disk (never transmitted)
