@@ -480,7 +480,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 For questions, issues, or feature requests:
 
-- **Email**: support@yourcompany.com
+- **Email**: tarikunegesa19@gmail.com
 - **Issue Tracker**: [GitHub Issues](https://github.com/your-org/weekly-report-automator/issues)
 - **Documentation**: [Wiki](https://github.com/your-org/weekly-report-automator/wiki)
 
