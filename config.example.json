@@ -1,0 +1,44 @@
+{
+    "input_dir": "C:/path/to/input",
+    "output_file": "C:/path/to/output/master_weekly_report.xlsx",
+    "email": {
+        "enabled": true,
+        "smtp_host": "smtp.gmail.com",
+        "smtp_port": 587,
+        "smtp_user": "your-email@gmail.com",
+        "smtp_password": "your-app-password-here",
+        "sender_name": "Weekly Report System",
+        "sender_email": "your-email@gmail.com",
+        "use_tls": true,
+        "deadline_day": "Thursday",
+        "deadline_hour": 17,
+        "deadline_minute": 0,
+        "reminder_subject": "Reminder: Weekly Report Not Yet Submitted",
+        "ack_subject": "Weekly Report Received — Thank You"
+    },
+    "auto_check": {
+        "enabled": false,
+        "interval_minutes": 30,
+        "window_start_hour": 8,
+        "window_end_hour": 20,
+        "send_acks": true,
+        "send_reminders": true,
+        "reminder_repeat_hours": 24
+    },
+    "departments": [
+        {
+            "name": "Engineering",
+            "folder": "C:/path/to/input/Engineering",
+            "cc_email": "dept-head@company.com",
+            "dept_head_email": "dept-head@company.com",
+            "dept_head_password": "secure-password",
+            "employees": [
+                {
+                    "name": "Employee Name",
+                    "email": "employee@company.com",
+                    "expected_file": "Employee_Weekly_Report.xlsx"
+                }
+            ]
+        }
+    ]
+}
