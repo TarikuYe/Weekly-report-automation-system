@@ -300,12 +300,16 @@ def _make_smtp(cfg: dict) -> smtplib.SMTP:
     password = ecfg.get("smtp_password", "")
 
     if port == 465:
+        # Implicit SSL — wrap the connection from the start
         ctx    = ssl.create_default_context()
-        server = smtplib.SMTP_SSL(host, port, context=ctx, timeout=15)
+        server = smtplib.SMTP_SSL(host, port, context=ctx, timeout=30)
+        server.ehlo()
     else:
-        server = smtplib.SMTP(host, port, timeout=15)
-        if use_tls:
-            server.ehlo()
+        # Plain connection first (covers port 25 and 587)
+        server = smtplib.SMTP(host, port, timeout=30)
+        server.ehlo()
+        if use_tls and server.has_extn("STARTTLS"):
+            # Only upgrade to TLS if the server actually supports it
             server.starttls(context=ssl.create_default_context())
             server.ehlo()
 

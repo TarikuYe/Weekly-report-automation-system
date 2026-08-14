@@ -637,6 +637,95 @@ async function initSettings() {
   });
 }
 
+// ── Clear Data (Danger Zone) ──────────────────────────────
+function initClearData() {
+  const modal = $("#clearModal");
+  const modalList = $("#clearModalList");
+  const confirmBtn = $("#clearModalConfirm");
+  const cancelBtn = $("#clearModalCancel");
+  
+  let currentMode = "output-only"; // "output-only" or "all"
+
+  function showClearModal(mode) {
+    currentMode = mode;
+    
+    // Build the list of what will be deleted
+    const items = [
+      "Master weekly report (output/master_weekly_report.xlsx)",
+      "All department master exports (output/dept_masters/*.xlsx)"
+    ];
+    
+    if (mode === "all") {
+      items.push("All archived input batches from the root archive folder");
+      items.push("All archived input batches from every department folder");
+    }
+    
+    modalList.innerHTML = items.map(item => `<li>${item}</li>`).join("");
+    modal.style.display = "flex";
+    feather.replace({ "aria-hidden": "true" });
+  }
+
+  function hideClearModal() {
+    modal.style.display = "none";
+  }
+
+  async function executeClear() {
+    hideClearModal();
+    const includeArchives = currentMode === "all";
+    const url = `/api/data/clear?include_archives=${includeArchives}`;
+    
+    try {
+      showToast(`Deleting ${currentMode === "all" ? "all data" : "output data"}...`, "info");
+      const result = await api(url, { method: "DELETE" });
+      
+      if (result.ok) {
+        const msg = `Cleared ${result.deleted_files} file(s) and ${result.deleted_folders} folder(s)`;
+        showToast(msg, "success");
+        
+        // Reset dashboard UI to empty state
+        showNoDataState("No data available. Run the pipeline to generate a new report.");
+        
+        // Destroy all charts
+        Object.keys(state.charts).forEach(key => destroyChart(key));
+        
+        // Clear last data
+        state.lastData = null;
+        
+        // Refresh file list
+        await loadFiles();
+      } else {
+        const msg = result.errors && result.errors.length 
+          ? `Partial success: ${result.errors.join("; ")}`
+          : "Some files could not be deleted";
+        showToast(msg, "warning");
+      }
+    } catch (err) {
+      showToast(`Failed to clear data: ${err.message}`, "error");
+    }
+  }
+
+  // Wire up all three clear buttons (topbar + two in danger zone)
+  $("#topbarClearBtn").addEventListener("click", () => showClearModal("output-only"));
+  $("#clearDataBtn").addEventListener("click", () => showClearModal("output-only"));
+  $("#clearAllBtn").addEventListener("click", () => showClearModal("all"));
+  
+  // Modal controls
+  confirmBtn.addEventListener("click", executeClear);
+  cancelBtn.addEventListener("click", hideClearModal);
+  
+  // Close modal on backdrop click
+  modal.addEventListener("click", e => {
+    if (e.target === modal) hideClearModal();
+  });
+  
+  // Close modal on Escape key
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && modal.style.display === "flex") {
+      hideClearModal();
+    }
+  });
+}
+
 // ── Pipeline run buttons (wired globally) ─────────────────
 function initPipelineButtons() {
   $("#runPipelineBtn").addEventListener("click", runPipeline);
@@ -686,6 +775,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   initLogStream();
   initDropZone();
   initRefreshButton();
+  initClearData();
   await initSettings();
   await loadDashboard();
   await loadFiles();

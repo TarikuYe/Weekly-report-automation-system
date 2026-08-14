@@ -71,6 +71,10 @@
       <button class="btn btn-ghost btn-icon" id="refreshBtn" title="Refresh data">
         <i data-feather="refresh-cw"></i>
       </button>
+      <button class="btn btn-danger btn-sm" id="topbarClearBtn" title="Clear output data">
+        <i data-feather="trash-2"></i>
+        <span>Clear Data</span>
+      </button>
       <button class="btn btn-primary" id="topbarRunBtn">
         <i data-feather="play"></i>
         <span>Run Pipeline</span>
@@ -386,9 +390,57 @@
         </div>
       </div>
     </div>
+
+    <!-- Danger zone -->
+    <div class="card danger-zone-card">
+      <div class="card-header">
+        <h3 style="color:var(--danger)"><i data-feather="alert-triangle" style="width:15px;height:15px;margin-right:6px;vertical-align:-2px;color:var(--danger)"></i>Danger Zone</h3>
+      </div>
+      <div class="danger-zone-body">
+        <div class="danger-row">
+          <div class="danger-info">
+            <strong>Clear Output Data</strong>
+            <span>Deletes the master report and all department exports. The dashboard will show no data until the pipeline is run again.</span>
+          </div>
+          <button class="btn btn-danger" id="clearDataBtn">
+            <i data-feather="trash-2"></i> Clear Output Data
+          </button>
+        </div>
+        <div class="danger-row">
+          <div class="danger-info">
+            <strong>Clear Output + All Archives</strong>
+            <span>Also permanently removes every archived input batch from all department folders. This cannot be undone.</span>
+          </div>
+          <button class="btn btn-danger" id="clearAllBtn">
+            <i data-feather="trash-2"></i> Clear Everything
+          </button>
+        </div>
+      </div>
+    </div>
   </section>
 
 </div><!-- /.main-wrap -->
+
+<!-- ══════════════ CLEAR DATA MODAL ══════════════ -->
+<div class="modal-overlay" id="clearModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="clearModalTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-icon"><i data-feather="alert-triangle"></i></span>
+      <h2 id="clearModalTitle">Confirm Clear Data</h2>
+    </div>
+    <div class="modal-body">
+      <p id="clearModalDesc">This will permanently delete the following:</p>
+      <ul class="clear-list" id="clearModalList"></ul>
+      <p class="modal-warning">This action <strong>cannot be undone.</strong> Make sure you have downloaded the report first.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="clearModalCancel">Cancel</button>
+      <button class="btn btn-danger" id="clearModalConfirm">
+        <i data-feather="trash-2"></i> Yes, Delete
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════ TOAST CONTAINER ══════════════ -->
 <div class="toast-container" id="toastContainer"></div>

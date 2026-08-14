@@ -1159,34 +1159,56 @@ def dataframe_rows(df: pd.DataFrame):
 # --------------------------------------------------------------------------- #
 def archive_inputs(input_dir: Path, departments: list[dict] | None = None) -> Path:
     """Move every .xlsx file in *input_dir* (and any configured department
-    folders) into a timestamped archive sub-folder under *input_dir*/archive.
+    folders) into timestamped archive sub-folders.
 
-    For files that live inside *input_dir* the original relative path is
-    preserved (e.g. ``Contract/report.xlsx``).
+    **NEW BEHAVIOR**: Each department's files are archived inside that
+    department's own folder at <dept_folder>/archive/YYYY-MM-DD_HH-MM-SS/.
+    Root-level files are archived under <input_dir>/archive/YYYY-MM-DD_HH-MM-SS/.
 
-    For files that live in an *external* absolute department folder the
-    department name is used as the archive sub-folder name so the structure
-    is still human-readable (e.g. ``Contract/report.xlsx``).
+    This allows each department head to see their own submission history
+    independently, and the Deputy General Manager can see the root-level
+    archive for global files.
 
     Archive layout:
         <input_dir>/archive/YYYY-MM-DD_HH-MM-SS/
-            file_at_root.xlsx
-            Contract/contract_rpt.xlsx   ← from input_dir/Contract or external
-            Design/design_rpt.xlsx
-            ...
+            file_at_root.xlsx   ← root-level files only
 
-    Returns the Path of the archive sub-folder that was created.
+        <input_dir>/Contract/archive/YYYY-MM-DD_HH-MM-SS/
+            contract_rpt.xlsx   ← Contract dept files
+
+        <input_dir>/Design/archive/YYYY-MM-DD_HH-MM-SS/
+            design_rpt.xlsx     ← Design dept files
+
+        ...
+
+    Returns the Path of the root-level archive sub-folder (for backward
+    compatibility with GUI/logging).
     Raises RuntimeError if no files are found to archive.
     """
-    # ── Collect root-level files ─────────────────────────────────────────
-    root_files: list[tuple[Path, Path]] = []   # (src, dest_rel)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    
+    # Track all archive operations for logging
+    archived_count = 0
+    archive_locations: list[Path] = []
+
+    # ── Archive root-level files ─────────────────────────────────────────
+    root_files: list[Path] = []
     for p in sorted(input_dir.glob("*.xlsx")):
         if not p.name.startswith("~$"):
-            root_files.append((p, Path(p.name)))
+            root_files.append(p)
 
-    # ── Collect department sub-folder files ──────────────────────────────
-    sub_files: list[tuple[Path, Path]] = []
+    if root_files:
+        root_archive_dir = input_dir / "archive" / timestamp
+        root_archive_dir.mkdir(parents=True, exist_ok=True)
+        for src in root_files:
+            dest = root_archive_dir / src.name
+            shutil.move(str(src), str(dest))
+            log.info("Archived: %s  →  %s", src, dest)
+            archived_count += 1
+        archive_locations.append(root_archive_dir)
+        log.info("Archived %d root-level file(s) to %s", len(root_files), root_archive_dir)
 
+    # ── Archive department files inside their own folders ────────────────
     if departments is not None:
         seen_folders: set[Path] = set()
         for dept in departments:
@@ -1200,47 +1222,85 @@ def archive_inputs(input_dir: Path, departments: list[dict] | None = None) -> Pa
 
             dept_name = dept.get("name", dept_folder.name)
 
-            if dept_folder.is_relative_to(input_dir):
-                # Internal sub-folder — keep relative path as-is
-                for p in sorted(dept_folder.rglob("*.xlsx")):
-                    if not p.name.startswith("~$") and \
-                            "archive" not in [part.lower() for part in p.relative_to(input_dir).parts[:-1]]:
-                        sub_files.append((p, p.relative_to(input_dir)))
-            else:
-                # External absolute folder — file goes into archive/<dept_name>/
-                for p in sorted(dept_folder.rglob("*.xlsx")):
-                    if not p.name.startswith("~$"):
-                        rel = p.relative_to(dept_folder)
-                        sub_files.append((p, Path(dept_name) / rel))
+            # Collect all .xlsx files in this department folder (recursive)
+            dept_files: list[Path] = []
+            for p in sorted(dept_folder.rglob("*.xlsx")):
+                if not p.name.startswith("~$"):
+                    # Skip files already inside an archive subdirectory
+                    try:
+                        rel_parts = p.relative_to(dept_folder).parts[:-1]
+                    except ValueError:
+                        rel_parts = ()
+                    if "archive" in [part.lower() for part in rel_parts]:
+                        continue
+                    dept_files.append(p)
+
+            if dept_files:
+                # Archive inside this department's own archive subfolder
+                dept_archive_dir = dept_folder / "archive" / timestamp
+                dept_archive_dir.mkdir(parents=True, exist_ok=True)
+                for src in dept_files:
+                    # Preserve relative path within the department folder
+                    rel_path = src.relative_to(dept_folder)
+                    dest = dept_archive_dir / rel_path
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(src), str(dest))
+                    log.info("Archived: %s  →  %s", src, dest)
+                    archived_count += 1
+                archive_locations.append(dept_archive_dir)
+                log.info(
+                    "Archived %d file(s) from dept '%s' to %s",
+                    len(dept_files), dept_name, dept_archive_dir,
+                )
     else:
         # Legacy mode — scan direct sub-folders of input_dir
         for sub in sorted(input_dir.iterdir()):
             if not sub.is_dir() or sub.name.lower() == "archive":
                 continue
+            
+            sub_files: list[Path] = []
             for p in sorted(sub.rglob("*.xlsx")):
-                if not p.name.startswith("~$") and \
-                        "archive" not in [part.lower() for part in p.relative_to(input_dir).parts[:-1]]:
-                    sub_files.append((p, p.relative_to(input_dir)))
+                if not p.name.startswith("~$"):
+                    # Skip files already inside an archive subdirectory
+                    try:
+                        rel_parts = p.relative_to(sub).parts[:-1]
+                    except ValueError:
+                        rel_parts = ()
+                    if "archive" in [part.lower() for part in rel_parts]:
+                        continue
+                    sub_files.append(p)
 
-    all_files = root_files + sub_files
-    if not all_files:
+            if sub_files:
+                # Archive inside this subfolder's own archive directory
+                sub_archive_dir = sub / "archive" / timestamp
+                sub_archive_dir.mkdir(parents=True, exist_ok=True)
+                for src in sub_files:
+                    rel_path = src.relative_to(sub)
+                    dest = sub_archive_dir / rel_path
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(src), str(dest))
+                    log.info("Archived: %s  →  %s", src, dest)
+                    archived_count += 1
+                archive_locations.append(sub_archive_dir)
+                log.info(
+                    "Archived %d file(s) from subfolder '%s' to %s",
+                    len(sub_files), sub.name, sub_archive_dir,
+                )
+
+    if archived_count == 0:
         raise RuntimeError(f"No .xlsx files to archive in {input_dir}")
 
-    timestamp   = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    archive_dir = input_dir / "archive" / timestamp
-    archive_dir.mkdir(parents=True, exist_ok=True)
-
-    for src, rel in all_files:
-        dest = archive_dir / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(dest))
-        log.info("Archived: %s  →  %s", src, archive_dir / rel)
-
     log.info(
-        "Archived %d input file(s) to %s",
-        len(all_files), archive_dir,
+        "Archived %d input file(s) total across %d location(s)",
+        archived_count, len(archive_locations),
     )
-    return archive_dir
+    
+    # Return the root-level archive dir for backward compatibility (GUI looks for this)
+    # If no root-level files were archived, return the first dept archive location
+    root_archive_dir = input_dir / "archive" / timestamp
+    if not root_archive_dir.exists() and archive_locations:
+        return archive_locations[0]
+    return root_archive_dir
 
 
 # --------------------------------------------------------------------------- #

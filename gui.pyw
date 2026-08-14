@@ -433,16 +433,34 @@ class WeeklyReportApp:
             main.run_pipeline_from_paths(input_dir, output_file, departments)
             self.last_output_path = Path(output_file)
             # Find the most-recently-created archive batch for the confirmation message.
-            archive_root = Path(input_dir) / "archive"
+            # With per-department archiving, check both the root input/archive/ and
+            # each department folder's own archive/ subdirectory.
             archive_batch: Path | None = None
-            if archive_root.exists():
-                batches = sorted(
-                    (d for d in archive_root.iterdir() if d.is_dir()),
-                    key=lambda d: d.stat().st_mtime,
-                    reverse=True,
-                )
-                if batches:
-                    archive_batch = batches[0]
+            newest_mtime: float = 0.0
+
+            def _check_archive_dir(archive_dir: Path) -> None:
+                nonlocal archive_batch, newest_mtime
+                if not archive_dir.exists():
+                    return
+                for d in archive_dir.iterdir():
+                    if d.is_dir():
+                        mtime = d.stat().st_mtime
+                        if mtime > newest_mtime:
+                            newest_mtime = mtime
+                            archive_batch = d
+
+            # Root-level archive
+            _check_archive_dir(Path(input_dir) / "archive")
+
+            # Per-department archives
+            for dept in (departments or []):
+                folder_value = dept.get("folder", "").strip()
+                if not folder_value:
+                    continue
+                dept_path = (Path(folder_value) if Path(folder_value).is_absolute()
+                             else Path(input_dir) / folder_value)
+                if dept_path.is_dir():
+                    _check_archive_dir(dept_path / "archive")
             if self._alive:
                 self.root.after(0, lambda: self._on_pipeline_success(archive_batch))
         except Exception as exc:

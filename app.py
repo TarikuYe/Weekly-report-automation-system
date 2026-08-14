@@ -361,6 +361,131 @@ def data_summary():
     return jsonify(_output_summary())
 
 
+@app.route("/api/data/clear", methods=["DELETE"])
+def clear_data():
+    """Delete all output data (master report, dept masters) and optionally archives.
+    
+    Query parameters:
+    - include_archives=true  → also delete all archive batches from input/archive 
+                               and all dept-level archive folders
+    
+    Returns JSON with counts of deleted files and folders.
+    """
+    cfg          = _load_config()
+    output_file  = Path(cfg.get("output_file", BASE / "output" / "master_weekly_report.xlsx"))
+    input_dir    = Path(cfg.get("input_dir", BASE / "input"))
+    departments  = cfg.get("departments", [])
+    
+    include_archives = request.args.get("include_archives", "false").lower() == "true"
+    
+    deleted_files = 0
+    deleted_folders = 0
+    errors: list[str] = []
+    
+    # ── Delete master output Excel ────────────────────────────────────
+    if output_file.exists():
+        try:
+            output_file.unlink()
+            deleted_files += 1
+            log.info("Deleted master output file: %s", output_file)
+        except Exception as exc:
+            errors.append(f"Failed to delete {output_file.name}: {exc}")
+            log.error("Clear data error (master file): %s", exc)
+    
+    # ── Delete dept_masters folder ────────────────────────────────────
+    dept_masters_dir = output_file.parent / "dept_masters"
+    if dept_masters_dir.exists():
+        try:
+            for f in dept_masters_dir.rglob("*.xlsx"):
+                if not f.name.startswith("~$"):
+                    f.unlink()
+                    deleted_files += 1
+            # Remove empty subdirectories
+            for dirpath in sorted(dept_masters_dir.rglob("*"), reverse=True):
+                if dirpath.is_dir() and not any(dirpath.iterdir()):
+                    dirpath.rmdir()
+                    deleted_folders += 1
+            # Remove the dept_masters folder itself if empty
+            if not any(dept_masters_dir.iterdir()):
+                dept_masters_dir.rmdir()
+                deleted_folders += 1
+            log.info("Cleared dept_masters directory: %s", dept_masters_dir)
+        except Exception as exc:
+            errors.append(f"Failed to clear dept_masters: {exc}")
+            log.error("Clear data error (dept_masters): %s", exc)
+    
+    # ── Optionally delete all archive batches ─────────────────────────
+    if include_archives:
+        # Root-level archive
+        root_archive = input_dir / "archive"
+        if root_archive.exists():
+            try:
+                for batch_folder in root_archive.iterdir():
+                    if batch_folder.is_dir():
+                        for f in batch_folder.rglob("*.xlsx"):
+                            f.unlink()
+                            deleted_files += 1
+                        # Remove the batch folder
+                        for dirpath in sorted(batch_folder.rglob("*"), reverse=True):
+                            if dirpath.is_dir() and not any(dirpath.iterdir()):
+                                dirpath.rmdir()
+                                deleted_folders += 1
+                        if batch_folder.exists() and not any(batch_folder.iterdir()):
+                            batch_folder.rmdir()
+                            deleted_folders += 1
+                # Remove root archive if empty
+                if not any(root_archive.iterdir()):
+                    root_archive.rmdir()
+                    deleted_folders += 1
+                log.info("Cleared root archive: %s", root_archive)
+            except Exception as exc:
+                errors.append(f"Failed to clear root archive: {exc}")
+                log.error("Clear data error (root archive): %s", exc)
+        
+        # Per-department archives
+        for dept in departments:
+            folder_value = dept.get("folder", "").strip()
+            dept_folder  = _resolve_dept_folder(input_dir, folder_value)
+            if dept_folder is None or not dept_folder.is_dir():
+                continue
+            
+            dept_archive = dept_folder / "archive"
+            if dept_archive.exists():
+                try:
+                    for batch_folder in dept_archive.iterdir():
+                        if batch_folder.is_dir():
+                            for f in batch_folder.rglob("*.xlsx"):
+                                f.unlink()
+                                deleted_files += 1
+                            # Remove the batch folder
+                            for dirpath in sorted(batch_folder.rglob("*"), reverse=True):
+                                if dirpath.is_dir() and not any(dirpath.iterdir()):
+                                    dirpath.rmdir()
+                                    deleted_folders += 1
+                            if batch_folder.exists() and not any(batch_folder.iterdir()):
+                                batch_folder.rmdir()
+                                deleted_folders += 1
+                    # Remove dept archive if empty
+                    if not any(dept_archive.iterdir()):
+                        dept_archive.rmdir()
+                        deleted_folders += 1
+                    log.info("Cleared dept archive: %s", dept_archive)
+                except Exception as exc:
+                    errors.append(f"Failed to clear {dept.get('name', '')} archive: {exc}")
+                    log.error("Clear data error (dept archive %s): %s", dept.get("name"), exc)
+    
+    result = {
+        "ok": len(errors) == 0,
+        "deleted_files": deleted_files,
+        "deleted_folders": deleted_folders,
+        "archives_cleared": include_archives,
+        "errors": errors,
+    }
+    
+    status_code = 200 if result["ok"] else 207  # 207 = Multi-Status (partial success)
+    return jsonify(result), status_code
+
+
 @app.route("/api/files/input", methods=["GET"])
 def list_input_files():
     return jsonify(_list_input_files())
@@ -475,23 +600,58 @@ def delete_input_file(filename: str):
 
 @app.route("/api/files/archive", methods=["GET"])
 def list_archive():
-    """Return a list of archived batches (timestamped sub-folders under input/archive)."""
-    cfg = _load_config()
-    archive_root = Path(cfg.get("input_dir", BASE / "input")) / "archive"
-    if not archive_root.exists():
-        return jsonify([])
+    """Return a list of archived batches across all archive locations.
 
-    batches = []
-    for folder in sorted(archive_root.iterdir(), reverse=True):
-        if not folder.is_dir():
+    With the new per-department archive layout, each department's files are
+    archived inside their own folder:
+        <dept_folder>/archive/YYYY-MM-DD_HH-MM-SS/
+
+    Root-level files are archived at:
+        <input_dir>/archive/YYYY-MM-DD_HH-MM-SS/
+
+    This route collects all timestamped batches from every location and
+    merges them by timestamp so the UI shows a unified view.
+    """
+    cfg         = _load_config()
+    input_dir   = Path(cfg.get("input_dir", BASE / "input"))
+    departments = cfg.get("departments", [])
+
+    # batch_timestamp → {"batch": ts, "files": [...], "count": int, "path": str}
+    batches_by_ts: dict[str, dict] = {}
+
+    def _collect_batch_dir(archive_dir: Path) -> None:
+        """Scan a <something>/archive/ folder and register each timestamped batch."""
+        if not archive_dir.exists():
+            return
+        for batch_folder in archive_dir.iterdir():
+            if not batch_folder.is_dir():
+                continue
+            ts = batch_folder.name          # e.g. "2026-07-28_10-30-00"
+            xlsx_files = sorted(batch_folder.rglob("*.xlsx"))
+            if ts not in batches_by_ts:
+                batches_by_ts[ts] = {
+                    "batch": ts,
+                    "files": [],
+                    "count": 0,
+                    "path":  str(batch_folder),   # first location found
+                }
+            for f in xlsx_files:
+                batches_by_ts[ts]["files"].append(f.name)
+                batches_by_ts[ts]["count"] += 1
+
+    # Root-level archive (for any files placed directly in input_dir)
+    _collect_batch_dir(input_dir / "archive")
+
+    # Per-department archives
+    for dept in departments:
+        folder_value = dept.get("folder", "").strip()
+        dept_folder  = _resolve_dept_folder(input_dir, folder_value)
+        if dept_folder is None or not dept_folder.is_dir():
             continue
-        files = sorted(folder.glob("*.xlsx"))
-        batches.append({
-            "batch":    folder.name,
-            "files":    [f.name for f in files],
-            "count":    len(files),
-            "path":     str(folder),
-        })
+        _collect_batch_dir(dept_folder / "archive")
+
+    # Sort newest-first
+    batches = sorted(batches_by_ts.values(), key=lambda b: b["batch"], reverse=True)
     return jsonify(batches)
 
 
